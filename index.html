@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualisasi Stack Postfix & Prefix Dinamis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* bg-slate-50 */
+        }
+        /* Animasi untuk elemen yang masuk (push) */
+        @keyframes push-animation {
+            0% { opacity: 0; transform: translateY(-30px) scale(0.95); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .stack-item-push { animation: push-animation 0.4s ease-out forwards; }
+        
+        /* Animasi untuk elemen yang keluar (pop) */
+        @keyframes pop-animation {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-30px) scale(0.95); }
+        }
+        .stack-item-pop { animation: pop-animation 0.4s ease-out forwards; }
+
+        /* Animasi untuk menyorot token yang sedang diproses */
+        .highlight-token {
+            transition: all 0.3s ease-in-out;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+            border-color: #3b82f6; /* border-blue-500 */
+        }
+        
+        /* Styling untuk input dan tombol agar lebih modern */
+        .form-input, .form-select {
+            transition: all 0.2s ease-in-out;
+        }
+        .form-input:focus, .form-select:focus {
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 tracking-tight">Visualisasi Evaluasi Ekspresi</h1>
+            <p class="text-gray-600 mt-2 text-lg">Pilih mode Postfix atau Prefix untuk melihat cara kerja stack.</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+            
+            <!-- Kolom Kiri: Panel Kontrol -->
+            <div class="lg:col-span-2 flex flex-col gap-6">
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold border-b border-gray-200 pb-3 mb-4">1. Pengaturan Ekspresi</h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="modeSelect" class="block text-sm font-medium text-gray-700 mb-1">Mode Evaluasi</label>
+                            <select id="modeSelect" class="w-full p-2.5 border border-gray-300 rounded-lg focus:outline-none form-select bg-white">
+                                <option value="postfix" selected>Postfix</option>
+                                <option value="prefix">Prefix</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="infixInput" class="block text-sm font-medium text-gray-700 mb-1">Ekspresi Infix</label>
+                            <input type="text" id="infixInput" value="A^(B+C)*D" class="w-full font-mono p-2.5 border border-gray-300 rounded-lg focus:outline-none form-input" placeholder="Contoh: (A+B)^C">
+                        </div>
+                        <div>
+                             <button id="convertButton" class="w-full bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500">Ubah ke <span id="convertButtonModeText">Postfix</span></button>
+                        </div>
+                        <div>
+                            <label for="expressionInput" id="expressionLabel" class="block text-sm font-medium text-gray-700 mb-1">Ekspresi Postfix</label>
+                            <input type="text" id="expressionInput" value="" class="w-full font-mono p-2.5 border border-gray-300 rounded-lg focus:outline-none form-input" placeholder="Hasil konversi atau input manual">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                    <h2 class="text-xl font-semibold border-b border-gray-200 pb-3 mb-4">2. Nilai Variabel</h2>
+                    <div id="valueInputsContainer" class="space-y-3">
+                        <!-- Input nilai akan di-generate oleh JS -->
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                     <h2 class="text-xl font-semibold border-b border-gray-200 pb-3 mb-4">3. Kontrol Visualisasi</h2>
+                     <div class="grid grid-cols-2 gap-3">
+                        <button id="startButton" class="w-full bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500">Mulai</button>
+                        <button id="nextButton" class="w-full bg-gray-700 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-gray-800 transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>Lanjut &rarr;</button>
+                        <button id="resetButton" class="col-span-2 w-full bg-red-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-red-700 transition-colors shadow-sm disabled:bg-red-300 disabled:cursor-not-allowed" disabled>Reset</button>
+                     </div>
+                </div>
+            </div>
+
+            <!-- Kolom Kanan: Visualisasi Stack -->
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-center mb-4">Visualisasi Stack</h2>
+                <p class="text-center text-gray-500 mb-2">Ekspresi yang diproses:</p>
+                <div id="expression-container" class="font-mono bg-gray-100 p-3 rounded-lg text-center text-xl flex justify-center items-center gap-2 flex-wrap mb-6 min-h-[56px] border">
+                    <!-- Token akan di-generate oleh JS -->
+                </div>
+                <div class="flex justify-center">
+                    <div class="w-52 h-[420px] bg-gray-100 rounded-t-xl border-2 border-b-0 border-gray-300 flex flex-col-reverse items-center p-2 pt-4 relative">
+                        <div class="absolute top-2 text-xs font-semibold text-gray-400">TOP</div>
+                        <div id="stack-container" class="w-full h-full flex flex-col-reverse items-center">
+                             <!-- Elemen stack akan ditambahkan di sini -->
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg min-h-[90px]">
+                    <h3 class="font-semibold text-blue-800">Deskripsi Langkah:</h3>
+                    <p id="explanation" class="text-blue-700 mt-1">Silakan atur ekspresi dan klik "Mulai".</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inisialisasi elemen DOM
+        const modeSelect = document.getElementById('modeSelect');
+        const infixInput = document.getElementById('infixInput');
+        const expressionInput = document.getElementById('expressionInput');
+        const expressionLabel = document.getElementById('expressionLabel');
+        const convertButton = document.getElementById('convertButton');
+        const convertButtonModeText = document.getElementById('convertButtonModeText');
+        const valueInputsContainer = document.getElementById('valueInputsContainer');
+        const startButton = document.getElementById('startButton');
+        const nextButton = document.getElementById('nextButton');
+        const resetButton = document.getElementById('resetButton');
+        const stackContainer = document.getElementById('stack-container');
+        const explanation = document.getElementById('explanation');
+        const expressionContainer = document.getElementById('expression-container');
+
+        // Variabel state aplikasi
+        let values = {};
+        let expressionTokens = [];
+        let steps = [];
+        let currentStep = 0;
+        let stack = [];
+        const isOperator = token => ['+', '-', '*', '/', '^'].includes(token);
+
+        // --- FUNGSI KONVERSI ---
+
+        function infixToPostfix(infix) {
+            const precedence = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 3 };
+            let outputQueue = '';
+            const operatorStack = [];
+            const tokens = infix.replace(/\s+/g, '').split(/([A-Za-z0-9]+|[\+\-\*\/\(\)\^])/).filter(Boolean);
+
+            tokens.forEach(token => {
+                if (/[A-Za-z0-9]/.test(token)) {
+                    outputQueue += token;
+                } else if (isOperator(token)) {
+                    while (
+                        operatorStack.length > 0 &&
+                        isOperator(operatorStack[operatorStack.length - 1]) &&
+                        (
+                            (precedence[operatorStack[operatorStack.length - 1]] > precedence[token]) ||
+                            (precedence[operatorStack[operatorStack.length - 1]] === precedence[token] && token !== '^')
+                        )
+                    ) {
+                        outputQueue += operatorStack.pop();
+                    }
+                    operatorStack.push(token);
+                } else if (token === '(') {
+                    operatorStack.push(token);
+                } else if (token === ')') {
+                    while (operatorStack.length > 0 && operatorStack[operatorStack.length - 1] !== '(') {
+                        outputQueue += operatorStack.pop();
+                    }
+                    if (operatorStack.length > 0) operatorStack.pop();
+                }
+            });
+
+            while (operatorStack.length > 0) {
+                outputQueue += operatorStack.pop();
+            }
+            return outputQueue;
+        }
+
+        function infixToPrefix(infix) {
+            let reversedInfix = infix.split('').reverse().join('');
+            reversedInfix = reversedInfix.replace(/\(/g, 'temp').replace(/\)/g, '(').replace(/temp/g, ')');
+            const postfixOfReversed = infixToPostfix(reversedInfix);
+            return postfixOfReversed.split('').reverse().join('');
+        }
+
+        // --- FUNGSI UTAMA & PERSIAPAN ---
+
+        function updateValueInputs() {
+            const fullExpression = infixInput.value + expressionInput.value;
+            const variables = [...new Set(fullExpression.match(/[A-Za-z]/g) || [])].sort();
+            
+            valueInputsContainer.innerHTML = '';
+            if (variables.length === 0) {
+                valueInputsContainer.innerHTML = '<p class="text-gray-500 text-sm">Tidak ada variabel ditemukan.</p>';
+            }
+
+            variables.forEach((v) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-2';
+                const label = document.createElement('label');
+                label.htmlFor = `val-${v}`;
+                label.className = 'w-8 font-bold text-gray-700';
+                label.textContent = `${v}:`;
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.id = `val-${v}`;
+                input.dataset.variable = v;
+                input.value = (v.charCodeAt(0) - 'A'.charCodeAt(0) + 1) * 2;
+                input.className = 'w-full p-2 border border-gray-300 rounded-lg focus:outline-none form-input';
+                div.appendChild(label);
+                div.appendChild(input);
+                valueInputsContainer.appendChild(div);
+            });
+        }
+
+        function prepareSteps() {
+            const mode = modeSelect.value;
+            const expression = expressionInput.value.replace(/\s+/g, '');
+            if (!expression) {
+                alert("Ekspresi tidak boleh kosong.");
+                return false;
+            }
+
+            expressionTokens = expression.split('');
+            const processingExpr = (mode === 'prefix') ? [...expressionTokens].reverse() : expressionTokens;
+
+            values = {};
+            let allValuesValid = true;
+            valueInputsContainer.querySelectorAll('input[type="number"]').forEach(input => {
+                const val = parseInt(input.value, 10);
+                if (isNaN(val)) allValuesValid = false;
+                values[input.dataset.variable] = val;
+            });
+
+            if (!allValuesValid) {
+                alert("Pastikan semua nilai variabel adalah angka yang valid.");
+                return false;
+            }
+
+            steps = [];
+            let tempStack = [];
+            let error = null;
+
+            processingExpr.forEach(token => {
+                if (error) return;
+                if (/[A-Za-z0-9]/.test(token)) {
+                    const value = isNaN(parseInt(token)) ? values[token] : parseInt(token);
+                    if (value === undefined) {
+                        error = `Nilai untuk variabel '${token}' tidak ditemukan.`;
+                        return;
+                    }
+                    steps.push({ action: 'push', value, token, explanation: `Token '${token}' (${value}). Push ke stack.` });
+                    tempStack.push(value);
+                } else if (isOperator(token)) {
+                    if (tempStack.length < 2) {
+                        error = "Ekspresi tidak valid: operan tidak cukup untuk operator.";
+                        return;
+                    }
+                    const op1 = tempStack.pop();
+                    const op2 = tempStack.pop();
+                    
+                    const firstOperand = (mode === 'prefix') ? op2 : op1;
+                    const secondOperand = (mode === 'prefix') ? op1 : op2;
+
+                    steps.push({ action: 'pop', value: op1, token, explanation: `Token '${token}'. Pop operan (${op1}).` });
+                    steps.push({ action: 'pop', value: op2, explanation: `Pop operan berikutnya (${op2}).` });
+                    
+                    let result;
+                    switch (token) {
+                        case '+': result = secondOperand + firstOperand; break;
+                        case '-': result = secondOperand - firstOperand; break;
+                        case '*': result = secondOperand * firstOperand; break;
+                        case '/': result = secondOperand / firstOperand; break;
+                        case '^': result = Math.pow(secondOperand, firstOperand); break;
+                    }
+                    
+                    steps.push({ action: 'calculate', result, explanation: `Hitung: ${secondOperand} ${token} ${firstOperand} = ${result}.` });
+                    steps.push({ action: 'push', value: result, explanation: `Push hasil (${result}) kembali ke stack.` });
+                    tempStack.push(result);
+                }
+            });
+
+            if (error) { alert(error); return false; }
+            if (tempStack.length !== 1) {
+                alert("Ekspresi tidak valid: sisa operan di stack lebih dari satu.");
+                return false;
+            }
+
+            steps.push({ action: 'finish', result: tempStack[0], explanation: `Evaluasi selesai. Hasil akhir: ${tempStack[0]}.` });
+            return true;
+        }
+        
+        // --- FUNGSI VISUALISASI ---
+        
+        function renderExpressionTokens() {
+            expressionContainer.innerHTML = '';
+            if (expressionTokens.length === 0) {
+                 expressionContainer.innerHTML = '<span class="text-gray-400">Ekspresi akan tampil di sini</span>';
+                 return;
+            }
+            expressionTokens.forEach((token, index) => {
+                const tokenEl = document.createElement('span');
+                tokenEl.textContent = token;
+                tokenEl.id = `token-${index}`;
+                tokenEl.className = 'px-2.5 py-1.5 bg-white rounded-md shadow-sm border border-gray-200 text-lg';
+                expressionContainer.appendChild(tokenEl);
+            });
+        }
+
+        function highlightTokenByIndex(index) {
+            document.querySelectorAll('#expression-container span').forEach(el => el.classList.remove('bg-blue-500', 'text-white', 'highlight-token'));
+            if (index === -1) return;
+            const tokenEl = document.getElementById(`token-${index}`);
+            if (tokenEl) tokenEl.classList.add('bg-blue-500', 'text-white', 'highlight-token');
+        }
+
+        function executeNextStep() {
+            if (currentStep >= steps.length) return;
+
+            const step = steps[currentStep];
+            explanation.textContent = step.explanation;
+            
+            if (step.action !== 'calculate' && step.action !== 'finish') {
+                let tokenOccurrence = -1;
+                for(let i = 0; i <= currentStep; i++) {
+                    if(steps[i].token === step.token) tokenOccurrence++;
+                }
+
+                let originalIndex = -1;
+                let currentOccurrence = -1;
+                const expr = (modeSelect.value === 'prefix') ? [...expressionTokens].reverse() : expressionTokens;
+                
+                for (let i = 0; i < expr.length; i++) {
+                    if (expr[i] === step.token) {
+                        currentOccurrence++;
+                        if (currentOccurrence === tokenOccurrence) {
+                            originalIndex = (modeSelect.value === 'prefix') ? (expressionTokens.length - 1 - i) : i;
+                            break;
+                        }
+                    }
+                }
+                highlightTokenByIndex(originalIndex);
+            }
+
+            if (step.action === 'push') pushToStack(step.value);
+            else if (step.action === 'pop') popFromStack();
+            else if (step.action === 'finish') {
+                nextButton.disabled = true;
+                highlightTokenByIndex(-1);
+            }
+
+            currentStep++;
+            if (currentStep >= steps.length) nextButton.disabled = true;
+        }
+
+        function pushToStack(value) {
+            stack.push(value);
+            const stackItem = document.createElement('div');
+            stackItem.className = 'w-28 h-12 flex items-center justify-center bg-blue-500 text-white font-bold text-lg rounded-lg shadow-md mb-2 stack-item-push';
+            stackItem.textContent = Number(value.toFixed(2));
+            stackContainer.appendChild(stackItem);
+        }
+
+        function popFromStack() {
+            stack.pop();
+            const itemToPop = stackContainer.lastChild;
+            if (itemToPop) {
+                itemToPop.classList.remove('stack-item-push');
+                itemToPop.classList.add('stack-item-pop');
+                setTimeout(() => itemToPop.remove(), 400);
+            }
+        }
+        
+        function resetVisualization() {
+            stack = []; steps = []; currentStep = 0;
+            stackContainer.innerHTML = '';
+            renderExpressionTokens();
+            explanation.textContent = 'Silakan atur ekspresi dan klik "Mulai".';
+            
+            startButton.disabled = false;
+            nextButton.disabled = true;
+            resetButton.disabled = true;
+            [modeSelect, infixInput, expressionInput, convertButton].forEach(el => el.disabled = false);
+            valueInputsContainer.querySelectorAll('input').forEach(i => i.disabled = false);
+            
+            highlightTokenByIndex(-1);
+        }
+
+        // --- EVENT LISTENERS ---
+
+        modeSelect.addEventListener('change', () => {
+            const mode = modeSelect.value;
+            const labelText = mode.charAt(0).toUpperCase() + mode.slice(1);
+            expressionLabel.textContent = `Ekspresi ${labelText}`;
+            expressionInput.placeholder = `Hasil konversi atau input manual`;
+            convertButtonModeText.textContent = labelText;
+            convertButton.click();
+        });
+
+        convertButton.addEventListener('click', () => {
+            const infix = infixInput.value;
+            if (infix) {
+                const mode = modeSelect.value;
+                const result = (mode === 'postfix') ? infixToPostfix(infix) : infixToPrefix(infix);
+                expressionInput.value = result;
+                updateValueInputs();
+            }
+        });
+
+        [infixInput, expressionInput].forEach(el => el.addEventListener('input', updateValueInputs));
+
+        startButton.addEventListener('click', () => {
+            if (prepareSteps()) {
+                resetVisualization(); 
+                prepareSteps(); 
+                renderExpressionTokens();
+                
+                startButton.disabled = true;
+                nextButton.disabled = false;
+                resetButton.disabled = false;
+                [modeSelect, infixInput, expressionInput, convertButton].forEach(el => el.disabled = true);
+                valueInputsContainer.querySelectorAll('input').forEach(i => i.disabled = true);
+                
+                explanation.textContent = 'Visualisasi siap. Klik "Lanjut" untuk memulai.';
+            }
+        });
+
+        nextButton.addEventListener('click', executeNextStep);
+        resetButton.addEventListener('click', resetVisualization);
+
+        // Inisialisasi saat halaman dimuat
+        window.onload = () => {
+            updateValueInputs();
+            convertButton.click();
+            resetVisualization();
+        };
+    </script>
+</body>
+</html>
